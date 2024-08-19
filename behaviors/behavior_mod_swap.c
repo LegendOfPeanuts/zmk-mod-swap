@@ -9,7 +9,6 @@
 #include <zmk/event_manager.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/events/keycode_state_changed.h>
-#include <zmk/events/modifiers_state_changed.h>
 #include <zmk/events/ble_active_profile_changed.h>
 #include <zmk/keys.h>
 #include <zmk/hid.h>
@@ -31,27 +30,34 @@ static void toggle_mod_swap() {
     LOG_INF("[Mod Swap] Mod swap is now %s", is_mod_swap_active ? "Active" : "Inactive");
 }
 
-static void swap_mods(const struct behavior_mod_swap_config *config, struct zmk_modifiers_state_changed *ev) {
-    LOG_INF("[Mod Swap] Swapping mods... %s", "");
-    uint8_t mods = ev->modifiers;
-    bool first_mod_on = mods & config->first_mod;
+static void swap_mods(const struct behavior_mod_swap_config *config, struct zmk_keycode_state_changed *ev) {
+    uint8_t explicit_mods = ev->explicit_modifiers;
+    uint8_t implicit_mods = ev->implicit_modifiers;
+    bool state = ev->state;
+    bool first_mod_on = (explicit_mods & config->first_mod) || (implicit_mods & config->first_mod);
+    bool second_mod_on = (explicit_mods & config->second_mod) || (implicit_mods & config->second_mod);
+    LOG_INF("----------------------------");
     LOG_INF("[Mod Swap] First mod: %d", config->first_mod);
     LOG_INF("[Mod Swap] Second mod: %d", config->second_mod);
-    LOG_INF("[Mod Swap] Mods: %d", mods);
-    bool second_mod_on = mods & config->second_mod;
+    LOG_INF("[Mod Swap] State: %s", state ? "PRESSED" : "RELEASED");
+    LOG_INF("[Mod Swap] Explicit Mods: %d", explicit_mods);
+    LOG_INF("[Mod Swap] Implicit mods: %d", implicit_mods);
     LOG_INF("[Mod Swap] First mod is %s", first_mod_on ? "ON" : "OFF");
     LOG_INF("[Mod Swap] Second mod is %s", second_mod_on ? "ON" : "OFF");
     if (first_mod_on && !second_mod_on) {
         LOG_INF("[Mod Swap] First mod on, swapping %s", "");
-        mods &= config->first_mod ^ 1;
-        mods |= config->second_mod;
-        ev->modifiers = mods;
+        // zmk_hid_unregister_mods(config->first_mod);
+        // zmk_hid_register_mods(config->second_mod);
     } else if (!first_mod_on && second_mod_on) {
         LOG_INF("[Mod Swap] Second mod on, swapping %s", "");
-        mods &= config->second_mod ^ 1;
-        mods |= config->first_mod;
-        ev->modifiers = mods;
+        // zmk_hid_unregister_mods(config->second_mod);
+        // zmk_hid_register_mods(config->first_mod);
     }
+    first_mod_on = (explicit_mods & config->first_mod) || (implicit_mods & config->first_mod);
+    second_mod_on = (explicit_mods & config->second_mod) || (implicit_mods & config->second_mod);
+    LOG_INF("[Mod Swap] First mod post state is %s", first_mod_on ? "ON" : "OFF");
+    LOG_INF("[Mod Swap] Second mod post state is %s", second_mod_on ? "ON" : "OFF");
+    LOG_INF("----------------------------");
 }
 
 static int on_mod_swap_binding_pressed(struct zmk_behavior_binding *binding,
@@ -72,8 +78,13 @@ static const struct behavior_driver_api behavior_mod_swap_driver_api = {
     .binding_released = on_mod_swap_binding_released,
 };
 
-static int mod_swap_modifiers_state_changed_callback(const zmk_event_t *eh) {
-    struct zmk_modifiers_state_changed *ev = as_zmk_modifiers_state_changed(eh);
+static int mod_swap_keycode_state_changed_callback(const zmk_event_t *eh);
+
+ZMK_LISTENER(behavior_mod_swap, mod_swap_keycode_state_changed_callback);
+ZMK_SUBSCRIPTION(behavior_mod_swap, zmk_keycode_state_changed);
+
+static int mod_swap_keycode_state_changed_callback(const zmk_event_t *eh) {
+    struct zmk_keycode_state_changed *ev = as_zmk_keycode_state_changed(eh);
     if (ev == NULL || !ev->state) {
         return ZMK_EV_EVENT_BUBBLE;
     }
@@ -84,6 +95,8 @@ static int mod_swap_modifiers_state_changed_callback(const zmk_event_t *eh) {
             continue;
         }
         if (is_mod_swap_active) {
+            struct zmk_keycode_state_changed_event dupe_ev = copy_raised_zmk_keycode_state_changed(ev);
+            ZMK_EVENT_RAISE_AFTER(dupe_ev, behavior_mod_swap);
             swap_mods(dev->config, ev);
         } 
     }
@@ -97,8 +110,6 @@ static int behavior_mod_swap_init(const struct device *dev) {
     return 0;
 }
 
-ZMK_LISTENER(behavior_mod_swap, mod_swap_modifiers_state_changed_callback);
-ZMK_SUBSCRIPTION(behavior_mod_swap, zmk_modifiers_state_changed);
 
 #define KP_INST(n)                                                          \
     static struct behavior_mod_swap_config behavior_mod_swap_config_##n = { \

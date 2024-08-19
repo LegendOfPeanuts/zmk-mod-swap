@@ -5,8 +5,8 @@
         /omit-if-no-ref/ num_word: num_word {
             compatible = "zmk,behavior-mod-swap";
             #binding-cells = <0>;
-            first_mod = <MOD_LCTL>;
-            second_mod = <MOD_LGUI>
+            first_mod = <(MOD_LCTL | MOD_RCTL)>;
+            second_mod = <(MOD_LGUI | MOD_RGUI)>;
         };
     };
 };
