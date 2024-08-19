@@ -1,0 +1,13 @@
+description: Mod swap behavior
+
+compatible: "zmk,behavior-mod-swap"
+
+include: zero_param.yaml
+
+properties:
+  first_mod:
+    type: int
+    required: true
+  second_mod:
+    type: int
+    required: true
